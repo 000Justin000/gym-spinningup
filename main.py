@@ -1,6 +1,5 @@
 import click
 import json
-import utils.nn
 from utils.nn.module import setup_module
 
 
@@ -10,6 +9,7 @@ def main(config_path: str):
     with open(config_path, "r") as f:
         config = json.load(f)
     model = setup_module(config["model"])
+    print(model)
 
 
 if __name__ == "__main__":
