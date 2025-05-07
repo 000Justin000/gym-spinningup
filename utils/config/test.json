@@ -1,0 +1,10 @@
+{
+    "model": [
+        "SequentialContainer",
+        {
+            "module_list": [
+                ["LinearLayer", {"in_key": "x", "out_key": "x", "in_dim": 10, "out_dim": 10}]
+            ]
+        }
+    ]
+}

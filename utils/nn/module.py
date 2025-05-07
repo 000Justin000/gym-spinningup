@@ -19,6 +19,11 @@ def get_module(name):
     return REGISTRY[name]
 
 
+def setup_module(module):
+    module_name, module_config = module
+    return get_module(module_name).setup_from_config(module_config)
+
+
 class BaseModule(nn.Module, ABC):
     def __init__(self):
         super().__init__()

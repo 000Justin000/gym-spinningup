@@ -1,4 +1,4 @@
-from module import BaseModule, register_module
+from .module import BaseModule, register_module
 from typing import Dict
 from torch import Tensor
 import torch.nn as nn

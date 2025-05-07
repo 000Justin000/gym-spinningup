@@ -1,19 +1,16 @@
-import gym
-from time import sleep
+import click
+import json
+import utils.nn
+from utils.nn.module import setup_module
 
-# env = gym.make("CartPole-v0", render_mode="human")
-# env = gym.make("MsPacman-v4", render_mode="human")
-env = gym.make("MsPacmanNoFrameskip-v4", render_mode="human")
-# env = gym.make("ALE/Pacman-v5", render_mode="human")
-env.reset()
-env.render()
 
-for _ in range(1000):
-    action = env.action_space.sample()
-    ob_next, reward, terminated, truncated, info = env.step(action)
-    env.render()
-    if terminated or truncated:
-        env.reset()
-    sleep(0.01)
+@click.command()
+@click.option("--config_path", type=click.Path(exists=True), required=True)
+def main(config_path: str):
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    model = setup_module(config["model"])
 
-print("done")
+
+if __name__ == "__main__":
+    main()

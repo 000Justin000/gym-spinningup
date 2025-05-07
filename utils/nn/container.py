@@ -1,4 +1,4 @@
-from module import BaseModule, register_module, get_module
+from .module import BaseModule, register_module, get_module, setup_module
 from typing import Dict, List
 from torch import Tensor
 import torch.nn as nn
@@ -21,8 +21,7 @@ class ResidualContainer(BaseModule):
 
     @classmethod
     def setup_from_config(cls, config):
-        module_name, module_config = config.pop("module")
-        module = get_module(module_name).setup_from_config(module_config)
+        module = setup_module(config.pop("module"))
         return cls(module=module, **config)
 
 
@@ -41,6 +40,6 @@ class SequentialContainer(BaseModule):
     @classmethod
     def setup_from_config(cls, config):
         module_list = []
-        for module_name, module_config in config["module_list"]:
-            module_list.append(get_module(module_name).setup_from_config(module_config))
+        for module in config["module_list"]:
+            module_list.append(setup_module(module))
         return cls(module_list=module_list)
