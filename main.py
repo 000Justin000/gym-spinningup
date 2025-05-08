@@ -74,7 +74,7 @@ def main(model_config: str):
 
     RENDER_FREQ = 0
     SLEEP_TIME = 0.0
-    NUM_EPISODES = 1000
+    NUM_EPISODES = 100000
     MAX_NUM_STEPS = 1000
     EPSILON = 0.2
     GAMMA = 0.999
