@@ -58,7 +58,7 @@ def main(model_config: str):
             
             # compute loss
             q_est = q_curr[:, action]
-            q_tgt = reward + GAMMA * q_next.max(dim=-1).item() * (1 - terminated)
+            q_tgt = reward + GAMMA * q_next.max(dim=-1)[0].item() * (1 - terminated)
             loss = F.mse_loss(q_est, q_tgt)
 
             # update NN
