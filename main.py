@@ -12,6 +12,7 @@ from time import sleep
 import random
 
 import os
+from collections import defaultdict
 
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
@@ -19,7 +20,7 @@ os.environ["SDL_AUDIODRIVER"] = "dummy"
 class ExponentialMovingAverage:
     def __init__(self, alpha=0.999):
         self.alpha = alpha
-        self.store = {}
+        self.store = defaultdict(lambda: 0.0)
 
     def update(self, key, value):
         self.store[key] = self.alpha * self.store[key] + (1 - self.alpha) * value
@@ -112,7 +113,9 @@ def main(model_config: str):
             if SLEEP_TIME > 0:
                 sleep(SLEEP_TIME)
 
-        print(f"Episode {episode} finished with reward {total_reward}")
+        print(
+            f"Episode {episode} finished with total_reward {total_reward:.4f}, q_est {ema.get('q_est'):.4f}, loss {ema.get('loss'):.4f}"
+        )
 
 
 if __name__ == "__main__":
