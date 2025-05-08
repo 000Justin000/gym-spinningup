@@ -11,14 +11,23 @@ from time import sleep
 
 import random
 
-import os
+import copy
+
 from collections import defaultdict
 
-os.environ["SDL_AUDIODRIVER"] = "dummy"
+from torch.utils.tensorboard import SummaryWriter
+import os
+import time
+
+log_dir = os.path.join("runs", "dqn_" + time.strftime("%Y%m%d-%H%M%S"))
+writer = SummaryWriter(log_dir)
+
+# import os
+# os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 
 class ExponentialMovingAverage:
-    def __init__(self, alpha=0.999):
+    def __init__(self, alpha=0.995):
         self.alpha = alpha
         self.store = defaultdict(lambda: 0.0)
 
@@ -34,9 +43,16 @@ class ExponentialMovingAverage:
 def main(model_config: str):
     with open(model_config, "r") as f:
         model_config = json.load(f)
-    model = setup_module(model_config)
-    model = model.to("mps")
-    print(model)
+    policy_model = setup_module(model_config).to("mps")
+    target_model = copy.deepcopy(policy_model).eval()
+
+    def soft_update(target_model, source_model, tau=0.05):
+        for target_param, source_param in zip(
+            target_model.parameters(), source_model.parameters()
+        ):
+            target_param.data.copy_(
+                target_param.data * (1.0 - tau) + source_param.data * tau
+            )
 
     preprocess = transforms.Compose(
         [
@@ -53,59 +69,54 @@ def main(model_config: str):
     )
     print(preprocess)
 
-    env = gym.make("MsPacman-v4", render_mode="human")
+    # env = gym.make("MsPacman-v4", render_mode="human")
+    env = gym.make("MsPacman-v4")
 
-    RENDER_FREQ = 10
+    RENDER_FREQ = 0
     SLEEP_TIME = 0.0
-    NUM_EPISODES = 100
+    NUM_EPISODES = 1000
     MAX_NUM_STEPS = 1000
     EPSILON = 0.2
     GAMMA = 0.999
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    ema = ExponentialMovingAverage()
+    optimizer = torch.optim.Adam(policy_model.parameters(), lr=0.003)
 
     for episode in range(NUM_EPISODES):
-        total_reward = 0
-        obs_curr, info = env.reset()
+        obs, info = env.reset()
+        list_reward = []
+        list_q_est = []
+        list_loss = []
         for step in range(MAX_NUM_STEPS):
             if RENDER_FREQ > 0 and episode % RENDER_FREQ == 0:
                 env.render()
 
-            q_curr = model({"x": preprocess(obs_curr)})["x"]  # [B, C, H, W] -> [B, A]
+            # compute current Q
+            q_curr = policy_model({"x": preprocess(obs)})["x"]  # [B, C, H, W] -> [B, A]
 
-            # epsilon-greedy sampling
+            # epsilon-greedy sampling & compute next Q
             if random.random() < EPSILON:
                 action = env.action_space.sample()
             else:
                 action = q_curr.argmax(dim=-1).item()
-            obs_next, reward, terminated, truncated, info = env.step(action)
-            total_reward += GAMMA**step * reward
-
-            with torch.no_grad():
-                q_next = model({"x": preprocess(obs_next)})["x"]
+            obs, reward, terminated, truncated, info = env.step(action)
+            q_next = target_model({"x": preprocess(obs)})["x"]
 
             # compute loss
             q_est = q_curr[:, action]
             q_tgt = reward + GAMMA * q_next.max(dim=-1)[0] * (1 - terminated)
             loss = F.mse_loss(q_est, q_tgt)
 
-            ema.update("q_est", q_est.item())
-            ema.update("loss", loss.item())
-            print(
-                f"logging: {q_est.item():.4f} {ema.get('q_est'):.4f}, {loss.item():.4f}, {ema.get('loss'):.4f}"
-            )
-
             # update NN
             optimizer.zero_grad()
             loss.backward()
             # clip gradient
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+            torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
             optimizer.step()
 
-            obs_curr = obs_next
+            soft_update(target_model, policy_model, tau=0.05)
 
-            if truncated:
-                print(obs_next)
+            list_reward.append(reward)
+            list_q_est.append(q_est.item())
+            list_loss.append(loss.item())
 
             if terminated:
                 break
@@ -113,9 +124,9 @@ def main(model_config: str):
             if SLEEP_TIME > 0:
                 sleep(SLEEP_TIME)
 
-        print(
-            f"Episode {episode} finished with total_reward {total_reward:.4f}, q_est {ema.get('q_est'):.4f}, loss {ema.get('loss'):.4f}"
-        )
+        writer.add_scalar("Episode/Reward", sum([GAMMA**i * reward for i, reward in enumerate(list_reward)]), episode)
+        writer.add_scalar("Episode/MeanQ", sum(list_q_est) / len(list_q_est), episode)
+        writer.add_scalar("Episode/AvgLoss", sum(list_loss) / len(list_loss), episode)
 
 
 if __name__ == "__main__":
