@@ -90,7 +90,9 @@ def main(model_config: str):
 
             ema.update("q_est", q_est.item())
             ema.update("loss", loss.item())
-            print(f"logging: {q_est.item():.4f} {ema.get('q_est'):.4f}, {loss.item():.4f}, {ema.get('loss'):.4f}")
+            print(
+                f"logging: {q_est.item():.4f} {ema.get('q_est'):.4f}, {loss.item():.4f}, {ema.get('loss'):.4f}"
+            )
 
             # update NN
             optimizer.zero_grad()
