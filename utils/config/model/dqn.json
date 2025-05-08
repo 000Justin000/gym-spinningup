@@ -14,7 +14,7 @@
                 }
             ],
             [
-                "ReLU",
+                "ReLULayer",
                 {
                     "in_key": "x",
                     "out_key": "x"
@@ -32,7 +32,7 @@
                 }
             ],
             [
-                "ReLU",
+                "ReLULayer",
                 {
                     "in_key": "x",
                     "out_key": "x"
@@ -50,7 +50,7 @@
                 }
             ],
             [
-                "ReLU",
+                "ReLULayer",
                 {
                     "in_key": "x",
                     "out_key": "x"
