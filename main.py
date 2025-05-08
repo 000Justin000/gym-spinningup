@@ -78,7 +78,7 @@ def main(model_config: str):
     MAX_NUM_STEPS = 1000
     EPSILON = 0.2
     GAMMA = 0.999
-    optimizer = torch.optim.Adam(policy_model.parameters(), lr=0.003)
+    optimizer = torch.optim.Adam(policy_model.parameters(), lr=0.01)
 
     for episode in range(NUM_EPISODES):
         obs, info = env.reset()
@@ -124,9 +124,17 @@ def main(model_config: str):
             if SLEEP_TIME > 0:
                 sleep(SLEEP_TIME)
 
-        writer.add_scalar("Episode/Reward", sum([GAMMA**i * reward for i, reward in enumerate(list_reward)]), episode)
-        writer.add_scalar("Episode/MeanQ", sum(list_q_est) / len(list_q_est), episode)
-        writer.add_scalar("Episode/AvgLoss", sum(list_loss) / len(list_loss), episode)
+        total_reward = sum([GAMMA**i * reward for i, reward in enumerate(list_reward)])
+        mean_q = sum(list_q_est) / len(list_q_est)
+        mean_loss = sum(list_loss) / len(list_loss)
+
+        writer.add_scalar("Episode/Reward", total_reward, episode)
+        writer.add_scalar("Episode/MeanQ", mean_q, episode)
+        writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
+
+        print(
+            f"Episode {episode} finished with total_reward {total_reward:.4f}, q_est {mean_q:.4f}, loss {mean_loss:.4f}"
+        )
 
 
 if __name__ == "__main__":
