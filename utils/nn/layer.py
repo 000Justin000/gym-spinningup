@@ -61,32 +61,50 @@ class Conv2dLayer(BaseLayer):
         self,
         in_key: str,
         out_key: str,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1,
-        groups: int = 1,
-        bias: bool = True,
-        padding_mode: str = "zeros",
+        **kwargs,
     ):
         super().__init__()
         self.in_key = in_key
         self.out_key = out_key
-        self.module = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=groups,
-            bias=bias,
-            padding_mode=padding_mode,
-        )
+        self.module = nn.Conv2d(**kwargs)
 
     def forward(self, dict: Dict[str, Tensor]):
         x = dict[self.in_key]
         dict[self.out_key] = self.module(x)
+        return dict
+
+
+@register_module
+class MaxPool2dLayer(BaseLayer):
+    def __init__(
+        self,
+        in_key: str,
+        out_key: str,
+        **kwargs,
+    ):
+        super().__init__()
+        self.in_key = in_key
+        self.out_key = out_key
+        self.module = nn.MaxPool2d(**kwargs)
+
+    def forward(self, dict: Dict[str, Tensor]):
+        x = dict[self.in_key]
+        dict[self.out_key] = self.module(x)
+        return dict
+
+
+@register_module
+class FlattenLayer(BaseLayer):
+    def __init__(
+        self,
+        in_key: str,
+        out_key: str,
+    ):
+        super().__init__()
+        self.in_key = in_key
+        self.out_key = out_key
+
+    def forward(self, dict: Dict[str, Tensor]):
+        x = dict[self.in_key]
+        dict[self.out_key] = x.view(x.size(0), -1)
         return dict
