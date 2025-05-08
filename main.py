@@ -35,7 +35,7 @@ def main(model_config: str):
     SLEEP_TIME = 0.01
     NUM_EPISODES = 10
     MAX_NUM_STEPS = 1000
-    EPSILON = 0.1
+    EPSILON = 0.2
     GAMMA = 0.98
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
