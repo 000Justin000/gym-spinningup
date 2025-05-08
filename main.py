@@ -28,7 +28,9 @@ def main(model_config: str):
     env = gym.make("MsPacmanNoFrameskip-v4", render_mode="human")
     obs, info = env.reset()
 
-    q = model(preprocess(obs).unsequeeze(0))
+    q = model({"x": preprocess(obs).unsqueeze(0)})["x"]
+    with torch.no_grad():
+        q = model({"x": preprocess(obs).unsqueeze(0)})["x"]
 
     for _ in range(1000):
         action = env.action_space.sample()
