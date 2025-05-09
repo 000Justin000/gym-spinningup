@@ -108,7 +108,9 @@ def main(model_config: str):
     target_model = copy.deepcopy(policy_model).eval()
 
     def select_action(state, policy_model, episode):
-        epsilon = EPSILON_END + (EPSILON_START - EPSILON_END) * np.exp(-1.0 * episode / EPSILON_DECAY)
+        epsilon = EPSILON_END + (EPSILON_START - EPSILON_END) * np.exp(
+            -1.0 * episode / EPSILON_DECAY
+        )
         if random.random() < epsilon:
             action = env.action_space.sample()
         else:
@@ -150,9 +152,9 @@ def main(model_config: str):
 
             if terminated:
                 break
-        
+
         list_loss = []
-        list_q_est = []
+        list_q_estimate = []
         for step in range(NUM_OPTIM_STEPS):
             (
                 batch_state,
@@ -161,18 +163,27 @@ def main(model_config: str):
                 batch_next_state,
                 batch_terminated,
             ) = buffer.sample(BATCH_SIZE)
-            q = policy_model({"x": batch_state})["x"]
-            with torch.no_grad():
-                next_q = target_model({"x": batch_next_state})["x"]
 
-            # compute loss
-            q_est = torch.gather(q, dim=-1, index=batch_action)
-            q_tgt = (
-                batch_reward
-                + GAMMA * next_q.max(dim=-1, keepdim=True).values * ~batch_terminated
+            q_estimate = policy_model({"x": batch_state})["x"].gather(
+                dim=-1, index=batch_action
             )
-            loss = F.smooth_l1_loss(q_est, q_tgt)
-            # loss = F.mse_loss(q_est, q_tgt)
+
+            with torch.no_grad():
+                # double DQN, use policy model to select action
+                batch_next_action = policy_model({"x": batch_next_state})["x"].argmax(
+                    dim=-1
+                )
+                q_target = (
+                    batch_reward
+                    + GAMMA
+                    * target_model({"x": batch_next_state})["x"].gather(
+                        dim=-1, index=batch_next_action
+                    )
+                    * ~batch_terminated
+                )
+
+            loss = F.smooth_l1_loss(q_estimate, q_target)
+            # loss = F.mse_loss(q_estimate, q_target)
 
             # update NN
             optimizer.zero_grad()
@@ -182,23 +193,26 @@ def main(model_config: str):
             optimizer.step()
 
             list_loss.append(loss.item())
-            list_q_est.append(q_est.mean().item())
+            list_q_estimate.append(q_estimate.mean().item())
 
             if step % 50 == 0:
                 writer.add_scalar(f"Episode[{episode}]/Loss", loss.item(), step)
-                writer.add_scalar(f"Episode[{episode}]/Q", q_est.mean().item(), step)
+                writer.add_scalar(
+                    f"Episode[{episode}]/Q", q_estimate.mean().item(), step
+                )
 
         model_update(target_model, policy_model, tau=1.0)
 
         episode_length = len(list_reward)
         total_reward = sum([GAMMA**i * reward for i, reward in enumerate(list_reward)])
-        mean_q = sum(list_q_est) / len(list_q_est)
+        mean_q = sum(list_q_estimate) / len(list_q_estimate)
         mean_loss = sum(list_loss) / len(list_loss)
 
         writer.add_scalar("Episode/Reward", total_reward, episode)
         writer.add_scalar("Episode/MeanQ", mean_q, episode)
         writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
         writer.add_scalar("Episode/Length", episode_length, episode)
+
 
 if __name__ == "__main__":
     main()
