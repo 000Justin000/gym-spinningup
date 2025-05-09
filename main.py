@@ -132,13 +132,13 @@ def main(model_config: str):
             buffer.push(state, action, reward, next_state, terminated)
 
             # training
-            state, action, reward, next_state, terminated = buffer.sample()
-            q = policy_model({"x": state})["x"]
-            next_q = target_model({"x": next_state})["x"]
+            batch_state, batch_action, batch_reward, batch_next_state, batch_terminated = buffer.sample()
+            q = policy_model({"x": batch_state})["x"]
+            next_q = target_model({"x": batch_next_state})["x"]
 
             # compute loss
-            q_est = torch.gather(q, dim=-1, index=action)
-            q_tgt = reward + GAMMA * next_q.max(dim=-1)[0] * (1 - terminated)
+            q_est = torch.gather(q, dim=-1, index=batch_action)
+            q_tgt = batch_reward + GAMMA * next_q.max(dim=-1).values * (1 - batch_terminated)
             loss = F.mse_loss(q_est, q_tgt)
 
             # update NN
