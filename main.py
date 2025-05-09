@@ -114,11 +114,11 @@ def main(model_config: str):
             with torch.no_grad():
                 action = policy_model({"x": state})["x"].argmax(dim=-1).item()
         return action
-        
+
+    env = gym.make("MsPacman-v4", render_mode=None)
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
     buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
     for episode in range(NUM_EPISODES):
-        env = gym.make("MsPacman-v4", render_mode="human" if episode % 10 == 0 else None)
         obs, info = env.reset()
 
         state_manager = StateManager(STACK_SIZE)
