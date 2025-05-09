@@ -128,9 +128,9 @@ def main(model_config: str):
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
     buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
     for episode in range(NUM_EPISODES):
-        obs, info = env.reset()
-
         state_manager = StateManager(STACK_SIZE)
+
+        obs, info = env.reset()
         state_manager.push(obs)
 
         list_reward = []
