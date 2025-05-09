@@ -145,7 +145,7 @@ def main(model_config: str):
             # compute loss
             q_est = torch.gather(q, dim=-1, index=batch_action)
             q_tgt = batch_reward + GAMMA * next_q.max(dim=-1, keepdim=True).values * ~batch_terminated
-            loss = F.mse_loss(q_est, q_tgt)
+            loss = F.smooth_l1_loss(q_est, q_tgt)
 
             # update NN
             optimizer.zero_grad()
