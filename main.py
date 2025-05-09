@@ -22,20 +22,32 @@ import time
 log_dir = os.path.join("runs", "dqn_" + time.strftime("%Y%m%d-%H%M%S"))
 writer = SummaryWriter(log_dir)
 
-# import os
-# os.environ["SDL_AUDIODRIVER"] = "dummy"
+
+class ReplayBuffer:
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        transitions = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, done = zip(*transitions)
+        return state, action, reward, next_state, done
 
 
-class ExponentialMovingAverage:
-    def __init__(self, alpha=0.995):
-        self.alpha = alpha
-        self.store = defaultdict(lambda: 0.0)
+class StackedFrames:
+    def __init__(self, stack_size):
+        self.stack_size = stack_size
+        self.frames = deque(maxlen=stack_size)
 
-    def update(self, key, value):
-        self.store[key] = self.alpha * self.store[key] + (1 - self.alpha) * value
+    def push(self, frame):
+        while len(self.frames) < self.stack_size:
+            self.frames.append(frame)
+        self.frames.append(frame)
 
-    def get(self, key):
-        return self.store[key]
+    def get(self):
+        return torch.cat(self.frames, dim=0)
 
 
 @click.command()
