@@ -62,7 +62,7 @@ class StateManager:
         self.frames.append(frame)
 
     def get(self):
-        return torch.cat(list(self.frames), dim=0)
+        return torch.cat(list(self.frames), dim=1)
 
 
 class ReplayBuffer:
