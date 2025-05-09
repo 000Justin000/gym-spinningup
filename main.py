@@ -120,6 +120,9 @@ def main(model_config: str):
         frames = StackedFrames(STACK_SIZE)
         obs, info = env.reset()
         frames.push(preprocess(obs))
+        list_reward = []
+        list_q_est = []
+        list_loss = []
         for step in range(MAX_NUM_STEPS):
             state = frames.get()
             action = select_action(state, policy_model)
@@ -148,7 +151,7 @@ def main(model_config: str):
             soft_update(target_model, policy_model, tau=0.05)
 
             list_reward.append(reward)
-            list_q_est.append(q_est.item())
+            list_q_est.append(q_est.mean().item())
             list_loss.append(loss.item())
 
             if terminated:
