@@ -59,7 +59,7 @@ class StackedFrames:
         self.frames.append(frame)
 
     def get(self):
-        return torch.cat(self.frames, dim=1)
+        return torch.cat(list(self.frames), dim=-1)
 
 
 def soft_update(target_model, source_model, tau=0.05):
