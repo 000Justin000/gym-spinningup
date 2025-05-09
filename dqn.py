@@ -1,60 +1,137 @@
 import gym
+import numpy as np
+import random
 import torch
-from stable_baselines3 import DQN
-from stable_baselines3.common.atari_wrappers import AtariWrapper
-from stable_baselines3.common.env_util import make_atari_env
-from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.vec_env import VecFrameStack
+import torch.nn as nn
+import torch.optim as optim
+from collections import deque
+import cv2
 
-# Check CUDA availability (GPU)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
+# --- Hyperparameters ---
+EPISODES = 5000
+LR = 1e-4
+GAMMA = 0.99
+EPS_START = 1.0
+EPS_END = 0.1
+EPS_DECAY = 1e5  # decay over 100k steps
+BATCH_SIZE = 32
+MEMORY_SIZE = 100_000
+TARGET_UPDATE = 1000  # steps
+STACK_SIZE = 4  # frames stacked
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Environment setup
-env_id = "MsPacman-v4"
-# Create vectorized Atari environment with frame stacking (e.g., 4 frames for temporal information)
-env = make_atari_env(env_id, n_envs=1, seed=0)
-env = AtariWrapper(env)
-env = VecFrameStack(env, n_stack=4)
+# --- Preprocess function ---
+def preprocess(obs):
+    # Convert to grayscale and resize to 84x84
+    gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    return resized.astype(np.uint8)
 
-# Model configuration
-model = DQN(
-    policy="CnnPolicy",
-    env=env,
-    learning_rate=1e-4,
-    buffer_size=100000,
-    learning_starts=50000,
-    batch_size=32,
-    tau=1.0,
-    gamma=0.99,
-    train_freq=4,
-    target_update_interval=1000,
-    exploration_fraction=0.1,
-    exploration_final_eps=0.01,
-    verbose=1,
-    tensorboard_log="./dqn_mspacman_tensorboard/",
-    device=device  # Use GPU if available
-)
+# --- Replay Buffer ---
+class ReplayBuffer:
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
 
-# Train the model (1 million timesteps is standard for Atari games, adjust as needed)
-timesteps = 1_000_000
-model.learn(total_timesteps=timesteps, log_interval=100)
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
 
-# Save the trained model
-model.save("dqn_mspacman")
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, done = zip(*batch)
 
-# Load the model (optional)
-model = DQN.load("dqn_mspacman", env=env, device=device)
+        return (
+            torch.tensor(np.stack(state), dtype=torch.float32).to(DEVICE) / 255.0,
+            torch.tensor(action, dtype=torch.long).to(DEVICE),
+            torch.tensor(reward, dtype=torch.float32).to(DEVICE),
+            torch.tensor(np.stack(next_state), dtype=torch.float32).to(DEVICE) / 255.0,
+            torch.tensor(done, dtype=torch.float32).to(DEVICE)
+        )
 
-# Evaluate the trained agent
-mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10, deterministic=True)
-print(f"Mean reward: {mean_reward} +/- {std_reward}")
+    def __len__(self):
+        return len(self.buffer)
 
-# Watch the trained agent play
-obs = env.reset()
-while True:
-    action, _ = model.predict(obs, deterministic=True)
-    obs, reward, done, info = env.step(action)
-    env.render()
-    if done:
-        obs = env.reset()
+# --- CNN DQN Model ---
+class DQN(nn.Module):
+    def __init__(self, input_shape, num_actions):
+        super(DQN, self).__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(STACK_SIZE, 32, kernel_size=8, stride=4), nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(3136, 512), nn.ReLU(),
+            nn.Linear(512, num_actions)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+# --- Action selection ---
+def select_action(state, policy_net, steps_done):
+    eps = EPS_END + (EPS_START - EPS_END) * np.exp(-1. * steps_done / EPS_DECAY)
+    if random.random() < eps:
+        return random.randrange(n_actions)
+    else:
+        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(DEVICE) / 255.0
+        with torch.no_grad():
+            return policy_net(state).argmax(dim=1).item()
+
+# --- Stack frames ---
+def stack_frames(frames, state):
+    frames.append(preprocess(state))
+    while len(frames) < STACK_SIZE:
+        frames.append(frames[-1])
+    return np.stack(frames, axis=0)
+
+# --- Setup environment ---
+env = gym.make("MsPacman-v4", render_mode=None)
+n_actions = env.action_space.n
+buffer = ReplayBuffer(MEMORY_SIZE)
+
+policy_net = DQN((STACK_SIZE, 84, 84), n_actions).to(DEVICE)
+target_net = DQN((STACK_SIZE, 84, 84), n_actions).to(DEVICE)
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()
+
+optimizer = optim.Adam(policy_net.parameters(), lr=LR)
+steps_done = 0
+
+# --- Training Loop ---
+for episode in range(EPISODES):
+    state, _ = env.reset()
+    frames = deque(maxlen=STACK_SIZE)
+    stacked_state = stack_frames(frames, state)
+
+    total_reward = 0
+    done = False
+
+    while not done:
+        action = select_action(stacked_state, policy_net, steps_done)
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated
+        total_reward += reward
+
+        next_stacked_state = stack_frames(frames, next_state)
+        buffer.push(stacked_state, action, reward, next_stacked_state, done)
+        stacked_state = next_stacked_state
+        steps_done += 1
+
+        # Train step
+        if len(buffer) > BATCH_SIZE:
+            states, actions, rewards, next_states, dones = buffer.sample(BATCH_SIZE)
+            q_values = policy_net(states).gather(1, actions.unsqueeze(1)).squeeze()
+            next_q = target_net(next_states).max(1)[0].detach()
+            expected_q = rewards + GAMMA * next_q * (1 - dones)
+
+            loss = nn.functional.mse_loss(q_values, expected_q)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        # Update target network
+        if steps_done % TARGET_UPDATE == 0:
+            target_net.load_state_dict(policy_net.state_dict())
+
+    print(f"Episode {episode}: Total reward = {total_reward}")
+
+env.close()

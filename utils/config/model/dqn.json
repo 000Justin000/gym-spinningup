@@ -69,6 +69,22 @@
                     "in_key": "x",
                     "out_key": "x",
                     "in_dim": 3136,
+                    "out_dim": 512
+                }
+            ],
+            [
+                "ReLULayer",
+                {
+                    "in_key": "x",
+                    "out_key": "x"
+                }
+            ],
+            [
+                "LinearLayer",
+                {
+                    "in_key": "x",
+                    "out_key": "x",
+                    "in_dim": 512,
                     "out_dim": 9
                 }
             ]
