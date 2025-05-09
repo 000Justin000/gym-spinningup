@@ -19,21 +19,33 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 import time
 
+import numpy as np
+
+
 log_dir = os.path.join("runs", "dqn_" + time.strftime("%Y%m%d-%H%M%S"))
 writer = SummaryWriter(log_dir)
 
 
 class ReplayBuffer:
-    def __init__(self, capacity):
+    def __init__(self, capacity, default_batch_size):
         self.buffer = deque(maxlen=capacity)
+        self.default_batch_size = default_batch_size
 
     def push(self, state, action, reward, next_state, done):
         self.buffer.append((state, action, reward, next_state, done))
 
-    def sample(self, batch_size):
+    def sample(self, batch_size=None):
+        if batch_size is None:
+            batch_size = self.default_batch_size
         transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        return state, action, reward, next_state, done
+        states, actions, rewards, next_states, dones = zip(*transitions)
+        return (
+            torch.cat(states, dim=0),
+            torch.Tensor(actions),
+            torch.Tensor(rewards),
+            torch.cat(next_states, dim=0),
+            torch.Tensor(dones),
+        )
 
 
 class StackedFrames:
@@ -47,7 +59,16 @@ class StackedFrames:
         self.frames.append(frame)
 
     def get(self):
-        return torch.cat(self.frames, dim=0)
+        return torch.cat(self.frames, dim=1)
+
+
+def soft_update(target_model, source_model, tau=0.05):
+    for target_param, source_param in zip(
+        target_model.parameters(), source_model.parameters()
+    ):
+        target_param.data.copy_(
+            target_param.data * (1.0 - tau) + source_param.data * tau
+        )
 
 
 @click.command()
@@ -57,14 +78,6 @@ def main(model_config: str):
         model_config = json.load(f)
     policy_model = setup_module(model_config).to("mps")
     target_model = copy.deepcopy(policy_model).eval()
-
-    def soft_update(target_model, source_model, tau=0.05):
-        for target_param, source_param in zip(
-            target_model.parameters(), source_model.parameters()
-        ):
-            target_param.data.copy_(
-                target_param.data * (1.0 - tau) + source_param.data * tau
-            )
 
     preprocess = transforms.Compose(
         [
@@ -90,26 +103,36 @@ def main(model_config: str):
     MAX_NUM_STEPS = 1000
     EPSILON = 0.2
     GAMMA = 0.999
-    optimizer = torch.optim.Adam(policy_model.parameters(), lr=0.01)
+    BATCH_SIZE = 32
+    REPLAY_BUFFER_SIZE = 100000
+    STACK_SIZE = 1
+    LR = 0.001
 
+    def select_action(state, policy_model):
+        if random.random() < EPSILON:
+            return env.action_space.sample()
+        else:
+            return policy_model({"x": preprocess(state)})["x"].argmax(dim=-1).item()
+
+    optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
+    buffer = ReplayBuffer(REPLAY_BUFFER_SIZE, BATCH_SIZE)
     for episode in range(NUM_EPISODES):
+        frames = StackedFrames(STACK_SIZE)
         obs, info = env.reset()
-        list_reward = []
-        list_q_est = []
-        list_loss = []
+        frames.push(preprocess(obs))
         for step in range(MAX_NUM_STEPS):
-            if RENDER_FREQ > 0 and episode % RENDER_FREQ == 0:
-                env.render()
-
-            # compute current Q
-            q_curr = policy_model({"x": preprocess(obs)})["x"]  # [B, C, H, W] -> [B, A]
-
-            # epsilon-greedy sampling & compute next Q
-            if random.random() < EPSILON:
-                action = env.action_space.sample()
-            else:
-                action = q_curr.argmax(dim=-1).item()
+            state = frames.get()
+            action = select_action(state, policy_model)
             obs, reward, terminated, truncated, info = env.step(action)
+            frames.push(preprocess(obs))
+            next_state = frames.get()
+            buffer.push(state, action, reward, next_state, terminated)
+
+            # training
+            state, action, reward, next_state, terminated = buffer.sample()
+            q = policy_model({"x": state})["x"]
+            next_q = target_model({"x": next_state})["x"]
+
             q_next = target_model({"x": preprocess(obs)})["x"]
 
             # compute loss
