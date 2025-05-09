@@ -171,7 +171,7 @@ def main(model_config: str):
             with torch.no_grad():
                 # double DQN, use policy model to select action
                 batch_next_action = policy_model({"x": batch_next_state})["x"].argmax(
-                    dim=-1
+                    dim=-1, keepdim=True
                 )
                 q_target = (
                     batch_reward
