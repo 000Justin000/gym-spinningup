@@ -41,10 +41,10 @@ class ReplayBuffer:
         states, actions, rewards, next_states, dones = zip(*transitions)
         return (
             torch.cat(states, dim=0),
-            torch.Tensor(actions),
-            torch.Tensor(rewards),
+            torch.tensor(actions).reshape(-1, 1),
+            torch.tensor(rewards).reshape(-1, 1),
             torch.cat(next_states, dim=0),
-            torch.Tensor(dones),
+            torch.tensor(dones).reshape(-1, 1),
         )
 
 
@@ -134,8 +134,8 @@ def main(model_config: str):
             next_q = target_model({"x": next_state})["x"]
 
             # compute loss
-            q_est = q_curr[:, action]
-            q_tgt = reward + GAMMA * q_next.max(dim=-1)[0] * (1 - terminated)
+            q_est = torch.gather(q, dim=-1, index=action)
+            q_tgt = reward + GAMMA * next_q.max(dim=-1)[0] * (1 - terminated)
             loss = F.mse_loss(q_est, q_tgt)
 
             # update NN
