@@ -25,12 +25,15 @@ import numpy as np
 SLEEP_TIME = 0.0
 NUM_EPISODES = 100000
 MAX_NUM_STEPS = 1000
-EPSILON = 0.2
+NUM_OPTIM_STEPS = 3000
+EPSILON_START = 1.0
+EPSILON_END = 0.1
+EPSILON_DECAY = 1000
 GAMMA = 0.999
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 REPLAY_BUFFER_SIZE = 100000
 STACK_SIZE = 4
-LR = 0.0001
+LR = 0.0003
 DEVICE = "mps"
 
 log_dir = os.path.join("runs", "dqn_" + time.strftime("%Y%m%d-%H%M%S"))
@@ -66,17 +69,17 @@ class StateManager:
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, default_batch_size):
+    def __init__(self, capacity):
         self.buffer = deque(maxlen=capacity)
-        self.default_batch_size = default_batch_size
+
+    def __len__(self):
+        return len(self.buffer)
 
     def push(self, state, action, reward, next_state, done):
         self.buffer.append((state, action, reward, next_state, done))
 
-    def sample(self, batch_size=None):
-        if batch_size is None:
-            batch_size = self.default_batch_size
-        transitions = random.choices(self.buffer, k=batch_size)
+    def sample(self, batch_size):
+        transitions = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*transitions)
         return (
             torch.cat(states, dim=0),
@@ -87,7 +90,7 @@ class ReplayBuffer:
         )
 
 
-def soft_update(target_model, source_model, tau=0.05):
+def model_update(target_model, source_model, tau=0.05):
     for target_param, source_param in zip(
         target_model.parameters(), source_model.parameters()
     ):
@@ -104,48 +107,60 @@ def main(model_config: str):
     policy_model = setup_module(model_config).to("mps")
     target_model = copy.deepcopy(policy_model).eval()
 
-    # env = gym.make("MsPacman-v4", render_mode="human")
-    env = gym.make("MsPacman-v4")
-
-    def select_action(state, policy_model):
-        if random.random() < EPSILON:
-            return env.action_space.sample()
+    def select_action(state, policy_model, episode):
+        epsilon = EPSILON_END + (EPSILON_START - EPSILON_END) * np.exp(-1.0 * episode / EPSILON_DECAY)
+        if random.random() < epsilon:
+            action = env.action_space.sample()
         else:
-            return policy_model({"x": state})["x"].argmax(dim=-1).item()
-
+            with torch.no_grad():
+                action = policy_model({"x": state})["x"].argmax(dim=-1).item()
+        return action
+        
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
-    buffer = ReplayBuffer(REPLAY_BUFFER_SIZE, BATCH_SIZE)
+    buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
     for episode in range(NUM_EPISODES):
-        state_manager = StateManager(STACK_SIZE)
+        env = gym.make("MsPacman-v4", render_mode="human" if episode % 10 == 0 else None)
         obs, info = env.reset()
+
+        state_manager = StateManager(STACK_SIZE)
         state_manager.push(obs)
+
         list_reward = []
-        list_q_est = []
-        list_loss = []
         for step in range(MAX_NUM_STEPS):
             state = state_manager.get()
-            action = select_action(state, policy_model)
+            action = select_action(state, policy_model, episode)
             obs, reward, terminated, truncated, info = env.step(action)
             state_manager.push(obs)
             next_state = state_manager.get()
             buffer.push(state, action, reward, next_state, terminated)
 
-            # training
+            list_reward.append(reward)
+
+            if terminated:
+                break
+        
+        list_loss = []
+        list_q_est = []
+        for step in range(NUM_OPTIM_STEPS):
             (
                 batch_state,
                 batch_action,
                 batch_reward,
                 batch_next_state,
                 batch_terminated,
-            ) = buffer.sample()
+            ) = buffer.sample(BATCH_SIZE)
             q = policy_model({"x": batch_state})["x"]
             with torch.no_grad():
                 next_q = target_model({"x": batch_next_state})["x"]
 
             # compute loss
             q_est = torch.gather(q, dim=-1, index=batch_action)
-            q_tgt = batch_reward + GAMMA * next_q.max(dim=-1, keepdim=True).values * ~batch_terminated
+            q_tgt = (
+                batch_reward
+                + GAMMA * next_q.max(dim=-1, keepdim=True).values * ~batch_terminated
+            )
             loss = F.smooth_l1_loss(q_est, q_tgt)
+            # loss = F.mse_loss(q_est, q_tgt)
 
             # update NN
             optimizer.zero_grad()
@@ -154,18 +169,16 @@ def main(model_config: str):
             torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
             optimizer.step()
 
-            soft_update(target_model, policy_model, tau=0.05)
-
-            list_reward.append(reward)
-            list_q_est.append(q_est.mean().item())
             list_loss.append(loss.item())
+            list_q_est.append(q_est.mean().item())
 
-            if terminated:
-                break
+            if step % 50 == 0:
+                writer.add_scalar(f"Episode[{episode}]/Loss", loss.item(), step)
+                writer.add_scalar(f"Episode[{episode}]/Q", q_est.mean().item(), step)
 
-            if SLEEP_TIME > 0:
-                sleep(SLEEP_TIME)
+        model_update(target_model, policy_model, tau=1.0)
 
+        episode_length = len(list_reward)
         total_reward = sum([GAMMA**i * reward for i, reward in enumerate(list_reward)])
         mean_q = sum(list_q_est) / len(list_q_est)
         mean_loss = sum(list_loss) / len(list_loss)
@@ -173,11 +186,7 @@ def main(model_config: str):
         writer.add_scalar("Episode/Reward", total_reward, episode)
         writer.add_scalar("Episode/MeanQ", mean_q, episode)
         writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
-
-        print(
-            f"Episode {episode} finished with total_reward {total_reward:.4f}, q_est {mean_q:.4f}, loss {mean_loss:.4f}"
-        )
-
+        writer.add_scalar("Episode/Length", episode_length, episode)
 
 if __name__ == "__main__":
     main()

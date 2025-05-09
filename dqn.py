@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import deque
-import cv2
+from PIL import Image
 
 # --- Hyperparameters ---
 EPISODES = 5000
@@ -18,14 +18,17 @@ BATCH_SIZE = 32
 MEMORY_SIZE = 100_000
 TARGET_UPDATE = 1000  # steps
 STACK_SIZE = 4  # frames stacked
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = "mps"
+
 
 # --- Preprocess function ---
 def preprocess(obs):
-    # Convert to grayscale and resize to 84x84
-    gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
-    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
-    return resized.astype(np.uint8)
+    # Convert to grayscale and resize to 84x84 using PIL
+    img = Image.fromarray(obs)
+    img = img.convert("L")  # Convert to grayscale
+    img = img.resize((84, 84), Image.BILINEAR)
+    return np.array(img, dtype=np.uint8)
+
 
 # --- Replay Buffer ---
 class ReplayBuffer:
@@ -44,31 +47,37 @@ class ReplayBuffer:
             torch.tensor(action, dtype=torch.long).to(DEVICE),
             torch.tensor(reward, dtype=torch.float32).to(DEVICE),
             torch.tensor(np.stack(next_state), dtype=torch.float32).to(DEVICE) / 255.0,
-            torch.tensor(done, dtype=torch.float32).to(DEVICE)
+            torch.tensor(done, dtype=torch.float32).to(DEVICE),
         )
 
     def __len__(self):
         return len(self.buffer)
+
 
 # --- CNN DQN Model ---
 class DQN(nn.Module):
     def __init__(self, input_shape, num_actions):
         super(DQN, self).__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(STACK_SIZE, 32, kernel_size=8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.ReLU(),
+            nn.Conv2d(STACK_SIZE, 32, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(3136, 512), nn.ReLU(),
-            nn.Linear(512, num_actions)
+            nn.Linear(3136, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
         )
 
     def forward(self, x):
         return self.net(x)
 
+
 # --- Action selection ---
 def select_action(state, policy_net, steps_done):
-    eps = EPS_END + (EPS_START - EPS_END) * np.exp(-1. * steps_done / EPS_DECAY)
+    eps = EPS_END + (EPS_START - EPS_END) * np.exp(-1.0 * steps_done / EPS_DECAY)
     if random.random() < eps:
         return random.randrange(n_actions)
     else:
@@ -76,12 +85,14 @@ def select_action(state, policy_net, steps_done):
         with torch.no_grad():
             return policy_net(state).argmax(dim=1).item()
 
+
 # --- Stack frames ---
 def stack_frames(frames, state):
     frames.append(preprocess(state))
     while len(frames) < STACK_SIZE:
         frames.append(frames[-1])
     return np.stack(frames, axis=0)
+
 
 # --- Setup environment ---
 env = gym.make("MsPacman-v4", render_mode=None)
