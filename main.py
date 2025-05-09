@@ -133,8 +133,6 @@ def main(model_config: str):
             q = policy_model({"x": state})["x"]
             next_q = target_model({"x": next_state})["x"]
 
-            q_next = target_model({"x": preprocess(obs)})["x"]
-
             # compute loss
             q_est = q_curr[:, action]
             q_tgt = reward + GAMMA * q_next.max(dim=-1)[0] * (1 - terminated)
