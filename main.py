@@ -13,7 +13,7 @@ import random
 
 import copy
 
-from collections import defaultdict
+from collections import deque
 
 from torch.utils.tensorboard import SummaryWriter
 import os
