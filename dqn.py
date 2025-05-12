@@ -209,8 +209,8 @@ def main(model_config: str):
                     * ~batch_terminated
                 )
 
-            loss = F.smooth_l1_loss(q_estimate, q_target)
-            # loss = F.mse_loss(q_estimate, q_target)
+            # loss = F.smooth_l1_loss(q_estimate, q_target)
+            loss = F.mse_loss(q_estimate, q_target)
 
             # update NN
             optimizer.zero_grad()
@@ -240,6 +240,7 @@ def main(model_config: str):
         writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
         writer.add_scalar("Episode/Length", episode_length, episode)
 
+    torch.save(policy_model.state_dict(), f"{log_dir}/policy_model.pth")
 
 if __name__ == "__main__":
     main()

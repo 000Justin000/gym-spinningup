@@ -36,7 +36,7 @@ STACK_SIZE = 4
 LR = 0.0001
 DEVICE = "mps"
 
-log_dir = os.path.join("runs", "dqn_" + time.strftime("%Y%m%d-%H%M%S"))
+log_dir = os.path.join("runs", "vpg_" + time.strftime("%Y%m%d-%H%M%S"))
 writer = SummaryWriter(log_dir)
 
 
@@ -124,9 +124,8 @@ def greedy_inference(policy_model):
 def main(model_config: str):
     with open(model_config, "r") as f:
         model_config = json.load(f)
-    policy_model = setup_module(model_config).to("mps")
-    target_model = setup_module(model_config).to("mps")
-    model_update(target_model, policy_model, 1.0)
+    policy_model = setup_module(model_config["policy_model"]).to("mps")
+    value_model = setup_module(model_config["value_model"]).to("mps")
 
     def select_action(state, policy_model, episode):
         epsilon = EPSILON_END + (EPSILON_START - EPSILON_END) * np.exp(

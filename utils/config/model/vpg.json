@@ -1,0 +1,195 @@
+{
+    "policy_model": [
+        "SequentialContainer",
+        {
+            "module_list": [
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 4,
+                        "out_channels": 32,
+                        "kernel_size": 8,
+                        "stride": 4
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 32,
+                        "out_channels": 64,
+                        "kernel_size": 4,
+                        "stride": 2
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 64,
+                        "out_channels": 64,
+                        "kernel_size": 3,
+                        "stride": 1
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "FlattenLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "LinearLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_dim": 3136,
+                        "out_dim": 512
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "LinearLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_dim": 512,
+                        "out_dim": 9
+                    }
+                ],
+                [
+                    "SoftmaxLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ]
+            ]
+        }
+    ],
+    "value_model": [
+        "SequentialContainer",
+        {
+            "module_list": [
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 4,
+                        "out_channels": 32,
+                        "kernel_size": 8,
+                        "stride": 4
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 32,
+                        "out_channels": 64,
+                        "kernel_size": 4,
+                        "stride": 2
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "Conv2dLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_channels": 64,
+                        "out_channels": 64,
+                        "kernel_size": 3,
+                        "stride": 1
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "FlattenLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "LinearLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_dim": 3136,
+                        "out_dim": 512
+                    }
+                ],
+                [
+                    "ReLULayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x"
+                    }
+                ],
+                [
+                    "LinearLayer",
+                    {
+                        "in_key": "x",
+                        "out_key": "x",
+                        "in_dim": 512,
+                        "out_dim": 1
+                    }
+                ]
+            ]
+        }
+    ]
+}

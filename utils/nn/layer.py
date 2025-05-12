@@ -108,3 +108,19 @@ class FlattenLayer(BaseLayer):
         x = dict[self.in_key]
         dict[self.out_key] = x.view(x.size(0), -1)
         return dict
+
+
+@register_module
+class SoftmaxLayer(BaseLayer):
+    def __init__(
+        self,
+        in_key: str,
+        out_key: str,
+    ):
+        super().__init__()
+        self.in_key = in_key
+        self.out_key = out_key
+
+    def forward(self, dict: Dict[str, Tensor]):
+        x = dict[self.in_key]
+        dict[self.out_key] = torch.softmax(x, dim=-1)
