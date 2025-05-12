@@ -191,9 +191,15 @@ def main(model_config: str):
 
             with torch.no_grad():
                 # double DQN, use policy model to select action
-                batch_next_action = policy_model({"x": batch_next_state})["x"].argmax(
+                # but use target model to get q value
+                # batch_next_action = policy_model({"x": batch_next_state})["x"].argmax(
+                #     dim=-1, keepdim=True
+                # )
+
+                batch_next_action = target_model({"x": batch_next_state})["x"].argmax(
                     dim=-1, keepdim=True
                 )
+
                 q_target = (
                     batch_reward
                     + GAMMA
@@ -203,8 +209,8 @@ def main(model_config: str):
                     * ~batch_terminated
                 )
 
-            # loss = F.smooth_l1_loss(q_estimate, q_target)
-            loss = F.mse_loss(q_estimate, q_target)
+            loss = F.smooth_l1_loss(q_estimate, q_target)
+            # loss = F.mse_loss(q_estimate, q_target)
 
             # update NN
             optimizer.zero_grad()
