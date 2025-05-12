@@ -127,25 +127,6 @@ def main(model_config: str):
     policy_model = setup_module(model_config["policy_model"]).to("mps")
     value_model = setup_module(model_config["value_model"]).to("mps")
 
-    def select_action(state, policy_model, episode):
-        epsilon = EPSILON_END + (EPSILON_START - EPSILON_END) * np.exp(
-            -1.0 * episode / EPSILON_DECAY
-        )
-        if random.random() < epsilon:
-            action = env.action_space.sample()
-        else:
-            with torch.no_grad():
-                action = policy_model({"x": state})["x"].argmax(dim=-1).item()
-        return action
-
-    def transform_reward(raw_reward, eaten):
-        if eaten:
-            return -math.log(20, 1000)
-        elif raw_reward > 0:
-            return math.log(raw_reward, 1000)
-        else:
-            return raw_reward
-
     env = gym.make("MsPacman-v4", render_mode=None)
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
     buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
@@ -160,9 +141,7 @@ def main(model_config: str):
             state = state_manager.get()
             action = select_action(state, policy_model, episode)
 
-            # prev_info = info
             obs, reward, terminated, truncated, info = env.step(action)
-            # reward = transform_reward(raw_reward, info["lives"] < prev_info["lives"])
 
             state_manager.push(obs)
             next_state = state_manager.get()
