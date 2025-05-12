@@ -21,14 +21,12 @@ import time
 
 import numpy as np
 import math
+from torch.distributions import Categorical
 
 
 NUM_EPISODES = 1000
 MAX_NUM_STEPS = 1000_000 # infinity
 NUM_OPTIM_STEPS = 1000
-EPSILON_START = 1.0
-EPSILON_END = 0.1
-EPSILON_DECAY = 300
 GAMMA = 0.99
 BATCH_SIZE = 32
 REPLAY_BUFFER_SIZE = 100_000
@@ -127,6 +125,12 @@ def main(model_config: str):
     policy_model = setup_module(model_config["policy_model"]).to("mps")
     value_model = setup_module(model_config["value_model"]).to("mps")
 
+    def select_action(state, policy_model):
+        with torch.no_grad():
+            distribution = Categorical(policy_model({"x": state})["x"])
+        action = distribution.sample()
+        return action
+
     env = gym.make("MsPacman-v4", render_mode=None)
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
     buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
@@ -136,87 +140,52 @@ def main(model_config: str):
         obs, info = env.reset()
         state_manager.push(obs)
 
-        list_reward = []
+        # initialize reward to zero for the first step
+        reward = 0
+        state = state_manager.get()
+        action = select_action(state, policy_model)
+        trajectory = [(reward, state, action)]
         for step in range(MAX_NUM_STEPS):
-            state = state_manager.get()
-            action = select_action(state, policy_model, episode)
-
             obs, reward, terminated, truncated, info = env.step(action)
-
             state_manager.push(obs)
-            next_state = state_manager.get()
-            buffer.push(state, action, reward, next_state, terminated)
 
-            list_reward.append(reward)
+            state = state_manager.get()
+            action = select_action(state, policy_model)
+
+            trajectory.append((reward, state, action))
 
             if terminated:
                 break
+        
+        # vectorization
+        list_reward, list_state, list_action = zip(*trajectory)
+        rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE) # [T]
+        states = torch.cat(list_state, dim=0).to(DEVICE) # [T, C, H, W]
+        actions = torch.tensor(list_action, dtype=torch.long).to(DEVICE) # [T]
 
-        list_loss = []
-        list_q_estimate = []
-        for step in range(NUM_OPTIM_STEPS):
-            (
-                batch_state,
-                batch_action,
-                batch_reward,
-                batch_next_state,
-                batch_terminated,
-            ) = buffer.sample(BATCH_SIZE)
+        # compute log probability of actions
+        distribution = Categorical(policy_model({"x": states})["x"])
+        log_probs = distribution.log_prob(actions)
 
-            q_estimate = policy_model({"x": batch_state})["x"].gather(
-                dim=-1, index=batch_action
-            )
+        # reward to go
+        discounted_rewards = rewards * GAMMA ** torch.arange(len(rewards), dtype=torch.float32, device=DEVICE)
+        reward_to_go = torch.sum(discounted_rewards, dim=0)
 
-            with torch.no_grad():
-                # double DQN, use policy model to select action
-                # but use target model to get q value
-                # batch_next_action = policy_model({"x": batch_next_state})["x"].argmax(
-                #     dim=-1, keepdim=True
-                # )
+        loss = -torch.mean(log_probs * reward_to_go)
 
-                batch_next_action = target_model({"x": batch_next_state})["x"].argmax(
-                    dim=-1, keepdim=True
-                )
-
-                q_target = (
-                    batch_reward
-                    + GAMMA
-                    * target_model({"x": batch_next_state})["x"].gather(
-                        dim=-1, index=batch_next_action
-                    )
-                    * ~batch_terminated
-                )
-
-            loss = F.smooth_l1_loss(q_estimate, q_target)
-            # loss = F.mse_loss(q_estimate, q_target)
-
-            # update NN
-            optimizer.zero_grad()
-            loss.backward()
-            # clip gradient
-            torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
-            optimizer.step()
-
-            list_loss.append(loss.item())
-            list_q_estimate.append(q_estimate.mean().item())
-
-            if step % 50 == 0:
-                writer.add_scalar(f"Episode[{episode}]/Loss", loss.item(), step)
-                writer.add_scalar(
-                    f"Episode[{episode}]/Q", q_estimate.mean().item(), step
-                )
-
-        model_update(target_model, policy_model, tau=1.0)
-
-        episode_length = len(list_reward)
+        # update policy model
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
+        optimizer.step()
+        
         total_reward = sum(list_reward)
-        mean_q = sum(list_q_estimate) / len(list_q_estimate)
-        mean_loss = sum(list_loss) / len(list_loss)
+        episode_length = len(trajectory)
+        mean_loss = loss.item()
 
         writer.add_scalar("Episode/Reward", total_reward, episode)
-        writer.add_scalar("Episode/MeanQ", mean_q, episode)
-        writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
         writer.add_scalar("Episode/Length", episode_length, episode)
+        writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--model_config",
-                "${workspaceFolder}/utils/config/model/dqn.json"
+                "${workspaceFolder}/utils/config/model/vpg.json"
             ]
         }
     ]
