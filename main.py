@@ -209,8 +209,8 @@ def main(model_config: str):
                     * ~batch_terminated
                 )
 
-            loss = F.smooth_l1_loss(q_estimate, q_target)
-            # loss = F.mse_loss(q_estimate, q_target)
+            # loss = F.smooth_l1_loss(q_estimate, q_target)
+            loss = F.mse_loss(q_estimate, q_target)
 
             # update NN
             optimizer.zero_grad()
