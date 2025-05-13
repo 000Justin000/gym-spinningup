@@ -169,7 +169,9 @@ def main(model_config: str):
         log_probs = distribution.log_prob(actions)
 
         # compute loss
-        loss = -torch.mean(log_probs * reward_to_go(rewards, GAMMA))
+        rtg = reward_to_go(rewards, GAMMA)
+        normalized_rtg = (rtg - rtg.mean()) / rtg.std()
+        loss = -torch.mean(log_probs * normalized_rtg)
 
         # update policy model
         optimizer.zero_grad()
