@@ -131,6 +131,13 @@ def main(model_config: str):
         action = distribution.sample()
         return action
 
+    def reward_to_go(rewards, gamma):
+        rtg = torch.zeros_like(rewards)
+        rtg[-1] = rewards[-1]
+        for i in reversed(range(len(rewards) - 1)):
+            rtg[i] = rewards[i] + gamma * rtg[i + 1]
+        return rtg
+
     env = gym.make("MsPacman-v4", render_mode=None)
     optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
     buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
