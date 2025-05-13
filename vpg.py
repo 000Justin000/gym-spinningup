@@ -161,9 +161,9 @@ def main(model_config: str):
 
         # compute loss
         rtg = future_discounted_sum(rewards, GAMMA)
-        val = batch["x_value"]
+        val = batch["x_value"].unsqueeze(-1)
         adv = rtg - val
-        normalized_adv = (adv - adv.mean()) / adv.std()
+        normalized_adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         policy_loss = -torch.mean(log_probs * normalized_adv)
         value_loss = F.mse_loss(rtg, val)
 
