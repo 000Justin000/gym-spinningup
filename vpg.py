@@ -181,7 +181,8 @@ def main(model_config: str):
 
         writer.add_scalar("Episode/Reward", total_reward, episode)
         writer.add_scalar("Episode/Length", episode_length, episode)
-        writer.add_scalar("Episode/AvgLoss", mean_loss, episode)
+        writer.add_scalar("Episode/PolicyLoss", policy_loss.item(), episode)
+        writer.add_scalar("Episode/ValueLoss", value_loss.item(), episode)
 
 
 if __name__ == "__main__":
