@@ -177,7 +177,6 @@ def main(model_config: str):
 
         total_reward = sum(list_reward)
         episode_length = len(trajectory)
-        mean_loss = loss.item()
 
         writer.add_scalar("Episode/Reward", total_reward, episode)
         writer.add_scalar("Episode/Length", episode_length, episode)
