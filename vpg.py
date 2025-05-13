@@ -25,7 +25,7 @@ from torch.distributions import Categorical
 
 
 NUM_EPISODES = 1000
-MAX_NUM_STEPS = 1000_000 # infinity
+MAX_NUM_STEPS = 1000_000  # infinity
 NUM_OPTIM_STEPS = 1000
 GAMMA = 0.99
 BATCH_SIZE = 32
@@ -115,7 +115,7 @@ def greedy_inference(policy_model):
             break
     env.close()
     return sum(list_reward)
-    
+
 
 @click.command()
 @click.option("--model_config", type=click.Path(exists=True), required=True)
@@ -127,7 +127,7 @@ def main(model_config: str):
 
     def select_action(state, policy_model):
         with torch.no_grad():
-            distribution = Categorical(policy_model({"x": state})["x"])
+            distribution = Categorical(logits=policy_model({"x": state})["x"])
         action = distribution.sample()
         return action
 
@@ -156,20 +156,20 @@ def main(model_config: str):
 
             if terminated:
                 break
-        
+
         # vectorization
         list_reward, list_state, list_action = zip(*trajectory)
-        rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE) # [T]
-        states = torch.cat(list_state, dim=0).to(DEVICE) # [T, C, H, W]
-        actions = torch.tensor(list_action, dtype=torch.long).to(DEVICE) # [T]
+        rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE)  # [T]
+        states = torch.cat(list_state, dim=0).to(DEVICE)  # [T, C, H, W]
+        actions = torch.tensor(list_action, dtype=torch.long).to(DEVICE)  # [T]
 
         # compute log probability of actions
-        distribution = Categorical(policy_model({"x": states})["x"])
+        distribution = Categorical(logits=policy_model({"x": states})["x"])
         log_probs = distribution.log_prob(actions)
 
         # reward to go
-        discounted_rewards = rewards * GAMMA ** torch.arange(len(rewards), dtype=torch.float32, device=DEVICE)
-        reward_to_go = torch.sum(discounted_rewards, dim=0)
+        discounted_rewards = rewards * (GAMMA ** torch.arange(len(rewards), device=DEVICE))
+        reward_to_go = torch.cumsum(discounted_rewards, dim=0)
 
         loss = -torch.mean(log_probs * reward_to_go)
 
@@ -178,7 +178,7 @@ def main(model_config: str):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
         optimizer.step()
-        
+
         total_reward = sum(list_reward)
         episode_length = len(trajectory)
         mean_loss = loss.item()
