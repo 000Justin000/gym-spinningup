@@ -133,9 +133,8 @@ def main(model_config: str):
 
     def reward_to_go(rewards, gamma):
         rtg = torch.zeros_like(rewards)
-        rtg[-1] = rewards[-1]
-        for i in reversed(range(len(rewards) - 1)):
-            rtg[i] = rewards[i] + gamma * rtg[i + 1]
+        for i in reversed(range(len(rewards))):
+            rtg[i] = rewards[i] + gamma * (rtg[i + 1] if i + 1 < len(rewards) else 0)
         return rtg
 
     env = gym.make("MsPacman-v4", render_mode=None)
