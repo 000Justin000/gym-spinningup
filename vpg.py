@@ -147,28 +147,23 @@ def main(model_config: str):
         obs, info = env.reset()
         state_manager.push(obs)
 
-        # initialize reward to zero for the first step
-        reward = 0
-        state = state_manager.get()
-        action = select_action(state, policy_model)
-        trajectory = [(reward, state, action)]
+        trajectory = []
         for step in range(MAX_NUM_STEPS):
+            state = state_manager.get()
+            action = select_action(state, policy_model)
             obs, reward, terminated, truncated, info = env.step(action)
             state_manager.push(obs)
 
-            state = state_manager.get()
-            action = select_action(state, policy_model)
-
-            trajectory.append((reward, state, action))
+            trajectory.append((state, action, reward))
 
             if terminated:
                 break
 
         # vectorization
-        list_reward, list_state, list_action = zip(*trajectory)
-        rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE)  # [T]
+        list_state, list_action, list_reward = zip(*trajectory)
         states = torch.cat(list_state, dim=0).to(DEVICE)  # [T, C, H, W]
         actions = torch.tensor(list_action, dtype=torch.long).to(DEVICE)  # [T]
+        rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE)  # [T]
 
         # compute log probability of actions
         distribution = Categorical(logits=policy_model({"x": states})["x"])
