@@ -88,7 +88,7 @@ class ReplayBuffer:
         )
 
 
-def greedy_inference(actor_critic):
+def greedy_inference(actor_critic_model):
     env = gym.make("MsPacman-v4", render_mode="human")
     state_manager = StateManager(STACK_SIZE)
     obs, info = env.reset()
@@ -98,7 +98,7 @@ def greedy_inference(actor_critic):
     while True:
         state = state_manager.get()
         with torch.no_grad():
-            action = actor_critic({"x": state})["x_policy"].argmax(dim=-1).item()
+            action = actor_critic_model({"x": state})["x_policy"].argmax(dim=-1).item()
         obs, reward, terminated, truncated, info = env.step(action)
         state_manager.push(obs)
         list_reward.append(reward)
@@ -113,11 +113,11 @@ def greedy_inference(actor_critic):
 def main(model_config: str):
     with open(model_config, "r") as f:
         model_config = json.load(f)
-    actor_critic = setup_module(model_config).to("mps")
+    actor_critic_model = setup_module(model_config).to("mps")
 
-    def select_action(state, actor_critic):
+    def select_action(state, actor_critic_model):
         with torch.no_grad():
-            batch = actor_critic({"x": state})
+            batch = actor_critic_model({"x": state})
             distribution = Categorical(logits=batch["x_policy"])
         action = distribution.sample()
         return action
@@ -129,7 +129,7 @@ def main(model_config: str):
         return rtg
 
     env = gym.make("MsPacman-v4", render_mode=None)
-    optimizer = torch.optim.Adam(actor_critic.parameters(), lr=LR)
+    optimizer = torch.optim.Adam(actor_critic_model.parameters(), lr=LR)
     for episode in range(NUM_EPISODES):
         state_manager = StateManager(STACK_SIZE)
 
@@ -139,7 +139,7 @@ def main(model_config: str):
         trajectory = []
         for step in range(MAX_NUM_STEPS):
             state = state_manager.get()
-            action = select_action(state, actor_critic)
+            action = select_action(state, actor_critic_model)
             obs, reward, terminated, truncated, info = env.step(action)
             state_manager.push(obs)
 
@@ -155,7 +155,7 @@ def main(model_config: str):
         rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE)  # [T]
 
         # compute log probability of actions
-        batch = actor_critic({"x": states})
+        batch = actor_critic_model({"x": states})
         distribution = Categorical(logits=batch["x_policy"])
         log_probs = distribution.log_prob(actions)
 
@@ -171,7 +171,7 @@ def main(model_config: str):
         optimizer.zero_grad()
         loss = policy_loss + value_loss
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(actor_critic.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(actor_critic_model.parameters(), max_norm=10.0)
         optimizer.step()
 
         total_reward = sum(list_reward)
