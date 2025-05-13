@@ -33,6 +33,7 @@ REPLAY_BUFFER_SIZE = 100_000
 STACK_SIZE = 4
 LR = 0.0001
 DEVICE = "mps"
+VALUE_LOSS_COEFF = 0.1
 
 log_dir = os.path.join("runs", "vpg_" + time.strftime("%Y%m%d-%H%M%S"))
 writer = SummaryWriter(log_dir)
@@ -165,13 +166,14 @@ def main(model_config: str):
         adv = rtg - val
         normalized_adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         policy_loss = -torch.mean(log_probs * normalized_adv)
-        value_loss = F.mse_loss(rtg, val)
+        value_loss = F.smooth_l1_loss(rtg, val)
 
         # update policy model
         optimizer.zero_grad()
-        loss = policy_loss + value_loss
+        loss = policy_loss + VALUE_LOSS_COEFF * value_loss
         loss.backward()
         torch.nn.utils.clip_grad_norm_(actor_critic_model.parameters(), max_norm=10.0)
+
         optimizer.step()
 
         total_reward = sum(list_reward)
