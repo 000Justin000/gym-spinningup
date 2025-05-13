@@ -174,6 +174,7 @@ def main(model_config: str):
         distribution = Categorical(logits=policy_model({"x": states})["x"])
         log_probs = distribution.log_prob(actions)
 
+        # compute loss
         loss = -torch.mean(log_probs * reward_to_go(rewards, GAMMA))
 
         # update policy model
