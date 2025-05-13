@@ -88,16 +88,7 @@ class ReplayBuffer:
         )
 
 
-def model_update(target_model, source_model, tau=0.05):
-    for target_param, source_param in zip(
-        target_model.parameters(), source_model.parameters()
-    ):
-        target_param.data.copy_(
-            target_param.data * (1.0 - tau) + source_param.data * tau
-        )
-
-
-def greedy_inference(policy_model):
+def greedy_inference(actor_critic):
     env = gym.make("MsPacman-v4", render_mode="human")
     state_manager = StateManager(STACK_SIZE)
     obs, info = env.reset()
@@ -107,7 +98,7 @@ def greedy_inference(policy_model):
     while True:
         state = state_manager.get()
         with torch.no_grad():
-            action = policy_model({"x": state})["x"].argmax(dim=-1).item()
+            action = actor_critic({"x": state})["x_policy"].argmax(dim=-1).item()
         obs, reward, terminated, truncated, info = env.step(action)
         state_manager.push(obs)
         list_reward.append(reward)
@@ -122,24 +113,24 @@ def greedy_inference(policy_model):
 def main(model_config: str):
     with open(model_config, "r") as f:
         model_config = json.load(f)
-    policy_model = setup_module(model_config["policy_model"]).to("mps")
-    value_model = setup_module(model_config["value_model"]).to("mps")
+    actor_critic = setup_module(model_config).to("mps")
 
-    def select_action(state, policy_model):
+    def select_action(state, actor_critic):
         with torch.no_grad():
-            distribution = Categorical(logits=policy_model({"x": state})["x"])
+            batch = actor_critic({"x": state})
+            distribution = Categorical(logits=batch["x_policy"])
         action = distribution.sample()
-        return action
+        log_prob = distribution.log_prob(action)
+        return action, log_prob
 
-    def reward_to_go(rewards, gamma):
+    def future_discounted_sum(rewards, gamma):
         rtg = torch.zeros_like(rewards)
         for i in reversed(range(len(rewards))):
             rtg[i] = rewards[i] + gamma * (rtg[i + 1] if i + 1 < len(rewards) else 0)
         return rtg
 
     env = gym.make("MsPacman-v4", render_mode=None)
-    optimizer = torch.optim.Adam(policy_model.parameters(), lr=LR)
-    buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
+    optimizer = torch.optim.Adam(actor_critic.parameters(), lr=LR)
     for episode in range(NUM_EPISODES):
         state_manager = StateManager(STACK_SIZE)
 
@@ -149,7 +140,7 @@ def main(model_config: str):
         trajectory = []
         for step in range(MAX_NUM_STEPS):
             state = state_manager.get()
-            action = select_action(state, policy_model)
+            action = select_action(state, actor_critic)
             obs, reward, terminated, truncated, info = env.step(action)
             state_manager.push(obs)
 
@@ -165,18 +156,23 @@ def main(model_config: str):
         rewards = torch.tensor(list_reward, dtype=torch.float32).to(DEVICE)  # [T]
 
         # compute log probability of actions
-        distribution = Categorical(logits=policy_model({"x": states})["x"])
+        batch = actor_critic({"x": states})
+        distribution = Categorical(logits=batch["x_policy"])
         log_probs = distribution.log_prob(actions)
 
         # compute loss
-        rtg = reward_to_go(rewards, GAMMA)
-        normalized_rtg = (rtg - rtg.mean()) / rtg.std()
-        loss = -torch.mean(log_probs * normalized_rtg)
+        rtg = future_discounted_sum(rewards, GAMMA)
+        val = batch["x_value"]
+        adv = rtg - val
+        normalized_adv = (adv - adv.mean()) / adv.std()
+        policy_loss = -torch.mean(log_probs * normalized_adv)
+        value_loss = F.mse_loss(rtg, val)
 
         # update policy model
         optimizer.zero_grad()
+        loss = policy_loss + value_loss
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(actor_critic.parameters(), max_norm=10.0)
         optimizer.step()
 
         total_reward = sum(list_reward)
