@@ -174,11 +174,7 @@ def main(model_config: str):
         distribution = Categorical(logits=policy_model({"x": states})["x"])
         log_probs = distribution.log_prob(actions)
 
-        # reward to go
-        discounted_rewards = rewards * (GAMMA ** torch.arange(len(rewards), device=DEVICE))
-        reward_to_go = torch.cumsum(discounted_rewards, dim=0)
-
-        loss = -torch.mean(log_probs * reward_to_go)
+        loss = -torch.mean(log_probs * reward_to_go(rewards, GAMMA))
 
         # update policy model
         optimizer.zero_grad()
