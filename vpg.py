@@ -120,8 +120,7 @@ def main(model_config: str):
             batch = actor_critic({"x": state})
             distribution = Categorical(logits=batch["x_policy"])
         action = distribution.sample()
-        log_prob = distribution.log_prob(action)
-        return action, log_prob
+        return action
 
     def future_discounted_sum(rewards, gamma):
         rtg = torch.zeros_like(rewards)
