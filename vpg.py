@@ -33,7 +33,7 @@ REPLAY_BUFFER_SIZE = 100_000
 STACK_SIZE = 4
 LR = 0.0001
 DEVICE = "mps"
-VALUE_LOSS_COEFF = 0.1
+VALUE_LOSS_COEFF = 0.01
 
 log_dir = os.path.join("runs", "vpg_" + time.strftime("%Y%m%d-%H%M%S"))
 writer = SummaryWriter(log_dir)
