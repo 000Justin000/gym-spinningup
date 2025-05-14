@@ -173,7 +173,6 @@ def main(model_config: str):
         loss = policy_loss + VALUE_LOSS_COEFF * value_loss
         loss.backward()
         torch.nn.utils.clip_grad_norm_(actor_critic_model.parameters(), max_norm=10.0)
-
         optimizer.step()
 
         total_reward = sum(list_reward)
